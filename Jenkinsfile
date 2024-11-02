@@ -1,54 +1,51 @@
 pipeline {
     agent any
-    environment {
-        AWS_REGION = "${params.REGION}" // Set AWS region parameter
-    }
+
     parameters {
-        string(name: 'REGION', defaultValue: 'us-east-1', description: 'AWS region to list resources from')
+        choice(
+            name: 'AWS_REGION',
+            choices: ['us-east-1', 'us-west-1', 'us-west-2', 'eu-central-1', 'eu-west-1', 'ap-south-1'], 
+            description: 'Select the AWS region'
+        )
     }
+
+    environment {
+        AWS_REGION = "${params.AWS_REGION}"
+    }
+
     stages {
-        stage('Initialize') {
-            steps {
-                echo "Listing resources in AWS region: ${AWS_REGION}"
-            }
-        }
-        stage('List Instances') {
+        stage('List AWS Resources') {
             steps {
                 script {
-                    sh """
-                    echo "Instances in region ${AWS_REGION}:"
-                    aws ec2 describe-instances --region ${AWS_REGION} --query 'Reservations[*].Instances[*].{ID:InstanceId,Type:InstanceType,State:State.Name}' --output table
-                    """
-                }
-            }
-        }
-        stage('List Volumes') {
-            steps {
-                script {
-                    sh """
-                    echo "Volumes in region ${AWS_REGION}:"
-                    aws ec2 describe-volumes --region ${AWS_REGION} --query 'Volumes[*].{ID:VolumeId,Size:Size,State:State}' --output table
-                    """
-                }
-            }
-        }
-        stage('List Security Groups') {
-            steps {
-                script {
-                    sh """
-                    echo "Security Groups in region ${AWS_REGION}:"
-                    aws ec2 describe-security-groups --region ${AWS_REGION} --query 'SecurityGroups[*].{ID:GroupId,Name:GroupName}' --output table
-                    """
-                }
-            }
-        }
-        stage('List Elastic IPs') {
-            steps {
-                script {
-                    sh """
-                    echo "Elastic IPs in region ${AWS_REGION}:"
-                    aws ec2 describe-addresses --region ${AWS_REGION} --query 'Addresses[*].{IP:PublicIp,InstanceId:InstanceId}' --output table
-                    """
+                    echo "Listing resources in the region: ${AWS_REGION}"
+
+                    // Use withCredentials to securely access AWS credentials
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials-id', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        
+                        // List all EC2 instances
+                        echo "Fetching EC2 Instances..."
+                        sh """
+                            aws ec2 describe-instances --region ${AWS_REGION} --query "Reservations[*].Instances[*].{InstanceId:InstanceId, State:State.Name, InstanceType:InstanceType, PublicIpAddress:PublicIpAddress}" --output table
+                        """
+
+                        // List all EBS volumes
+                        echo "Fetching EBS Volumes..."
+                        sh """
+                            aws ec2 describe-volumes --region ${AWS_REGION} --query "Volumes[*].{VolumeId:VolumeId, Size:Size, State:State}" --output table
+                        """
+
+                        // List all Security Groups
+                        echo "Fetching Security Groups..."
+                        sh """
+                            aws ec2 describe-security-groups --region ${AWS_REGION} --query "SecurityGroups[*].{GroupName:GroupName, GroupId:GroupId, Description:Description, VpcId:VpcId}" --output table
+                        """
+
+                        // List all Elastic IPs
+                        echo "Fetching Elastic IPs..."
+                        sh """
+                            aws ec2 describe-addresses --region ${AWS_REGION} --query "Addresses[*].{PublicIp:PublicIp, InstanceId:InstanceId}" --output table
+                        """
+                    }
                 }
             }
         }
